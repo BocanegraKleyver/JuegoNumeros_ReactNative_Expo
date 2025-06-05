@@ -7,13 +7,13 @@ const SplashScreen = ({ navigation }) => {
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 1000, // animación de 1 segundo
+      duration: 1000,
       useNativeDriver: true,
     }).start();
 
     const timer = setTimeout(() => {
       navigation.replace("Inicio");
-    }, 5500); // como en Android, 5.5 segundos
+    }, 5500);
 
     return () => clearTimeout(timer);
   }, []);

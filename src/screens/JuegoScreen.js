@@ -7,7 +7,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const JuegoScreen = ({ navigation, route }) => {
   const [numeroSecreto, setNumeroSecreto] = useState("");
@@ -17,6 +19,8 @@ const JuegoScreen = ({ navigation, route }) => {
   const [resultado, setResultado] = useState("");
   const [jugador, setJugador] = useState("");
   const [ayudasRestantes, setAyudasRestantes] = useState(3);
+  const [reinicioUsado, setReinicioUsado] = useState(false);
+  const [mostrarRepetidos, setMostrarRepetidos] = useState(false);
 
   const MAX_INTENTOS = 10;
 
@@ -31,6 +35,8 @@ const JuegoScreen = ({ navigation, route }) => {
         const intentoN = await AsyncStorage.getItem("juego_intento");
         const histo = await AsyncStorage.getItem("juego_historial");
         const ayudas = await AsyncStorage.getItem("juego_ayudas");
+        const repetidosStr = await AsyncStorage.getItem("juego_repetidos");
+        setMostrarRepetidos(repetidosStr === "true");
 
         setNumeroSecreto(numero);
         setIntentoActual(parseInt(intentoN));
@@ -41,25 +47,34 @@ const JuegoScreen = ({ navigation, route }) => {
         setNumeroSecreto(numero);
         await AsyncStorage.setItem("juego_ayudas", "3");
       }
+
+      const reiniciado = await AsyncStorage.getItem("juego_reiniciado");
+      setReinicioUsado(reiniciado === "true");
     };
+
     inicializar();
   }, []);
+
+  const generarNumeroSecreto = (permitirRepetidos) => {
+    let numeros = [];
+    while (numeros.length < 4) {
+      const n = Math.floor(Math.random() * 10);
+      if (permitirRepetidos || !numeros.includes(n)) {
+        numeros.push(n);
+      }
+    }
+    return numeros.join("");
+  };
 
   const evaluarIntento = (entrada) => {
     let bien = 0,
       regular = 0,
       mal = 0;
-
     for (let i = 0; i < 4; i++) {
-      if (entrada[i] === numeroSecreto[i]) {
-        bien++;
-      } else if (numeroSecreto.includes(entrada[i])) {
-        regular++;
-      } else {
-        mal++;
-      }
+      if (entrada[i] === numeroSecreto[i]) bien++;
+      else if (numeroSecreto.includes(entrada[i])) regular++;
+      else mal++;
     }
-
     return `${bien}B ${regular}R ${mal}M`;
   };
 
@@ -82,11 +97,9 @@ const JuegoScreen = ({ navigation, route }) => {
     );
     await AsyncStorage.setItem("juego_intento", `${intentoActual + 1}`);
 
-    if (resultado.startsWith("4B")) {
-      finalizarPartida(true);
-    } else if (intentoActual >= MAX_INTENTOS) {
-      finalizarPartida(false);
-    } else {
+    if (resultado.startsWith("4B")) finalizarPartida(true);
+    else if (intentoActual >= MAX_INTENTOS) finalizarPartida(false);
+    else {
       setIntentoActual((prev) => prev + 1);
       setIntento("");
     }
@@ -114,6 +127,7 @@ const JuegoScreen = ({ navigation, route }) => {
       "juego_historial",
       "juego_enCurso",
       "juego_ayudas",
+      "juego_reiniciado",
     ]);
 
     Alert.alert(
@@ -126,7 +140,9 @@ const JuegoScreen = ({ navigation, route }) => {
         },
         {
           text: "Jugar otra vez",
-          onPress: () => navigation.replace("Juego"),
+          onPress: async () => {
+            await iniciarPartidaNueva();
+          },
         },
       ]
     );
@@ -144,10 +160,7 @@ const JuegoScreen = ({ navigation, route }) => {
     }
 
     Alert.alert("Usar ayuda", "¿Querés una pista sobre tu intento actual?", [
-      {
-        text: "Cancelar",
-        style: "cancel",
-      },
+      { text: "Cancelar", style: "cancel" },
       {
         text: "Sí",
         onPress: async () => {
@@ -167,63 +180,201 @@ const JuegoScreen = ({ navigation, route }) => {
     ]);
   };
 
+  const reiniciarPartida = () => {
+    Alert.alert(
+      "¿Reiniciar partida?",
+      "Solo se puede reiniciar una vez por juego. ¿Estás seguro?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Sí, reiniciar",
+          style: "destructive",
+          onPress: async () => {
+            const repetidosStr = await AsyncStorage.getItem("juego_repetidos");
+            const permitirRepetidos = repetidosStr === "true";
+
+            const nuevoNumero = generarNumeroSecreto(permitirRepetidos);
+
+            await AsyncStorage.multiSet([
+              ["juego_numero", nuevoNumero],
+              ["juego_intento", "1"],
+              ["juego_historial", JSON.stringify([])],
+              ["juego_enCurso", "true"],
+              ["juego_ayudas", "3"],
+              ["juego_reiniciado", "true"],
+            ]);
+
+            setNumeroSecreto(nuevoNumero);
+            setIntentoActual(1);
+            setHistorial([]);
+            setAyudasRestantes(3);
+            setIntento("");
+            setResultado("");
+            setReinicioUsado(true);
+
+            Alert.alert("Partida reiniciada", "Solo podés reiniciar una vez.");
+          },
+        },
+      ]
+    );
+  };
+
+  const iniciarPartidaNueva = async () => {
+    const repetidosStr = await AsyncStorage.getItem("juego_repetidos");
+    const permitirRepetidos = repetidosStr === "true";
+
+    const nuevoNumero = generarNumeroSecreto(permitirRepetidos);
+
+    await AsyncStorage.multiSet([
+      ["juego_numero", nuevoNumero],
+      ["juego_intento", "1"],
+      ["juego_historial", JSON.stringify([])],
+      ["juego_enCurso", "true"],
+      ["juego_ayudas", "3"],
+      ["juego_reiniciado", "false"],
+    ]);
+
+    setNumeroSecreto(nuevoNumero);
+    setIntentoActual(1);
+    setHistorial([]);
+    setAyudasRestantes(3);
+    setIntento("");
+    setResultado("");
+    setReinicioUsado(false);
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>Jugador: {jugador}</Text>
-      <Text style={styles.intento}>
-        Intento {intentoActual} de {MAX_INTENTOS}
-      </Text>
-
-      <TextInput
-        placeholder="Ingresá un número de 4 cifras"
-        value={intento}
-        onChangeText={setIntento}
-        keyboardType="numeric"
-        maxLength={4}
-        style={styles.input}
-      />
-
-      <Button title="Verificar" onPress={manejarVerificacion} />
-
-      <Text style={styles.resultado}>{resultado}</Text>
-
-      <Button title="🆘 Pedir ayuda" onPress={pedirAyuda} />
-
-      <Text style={styles.subheader}>Historial:</Text>
-      {historial.map((linea, i) => (
-        <Text key={i} style={styles.historial}>
-          {linea}
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f2f2f2" }}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.header}>🎮 Jugador: {jugador}</Text>
+        <Text style={styles.intento}>
+          🔢 Intento {intentoActual} de {MAX_INTENTOS}
         </Text>
-      ))}
 
-      <Button
-        title="🔁 Reiniciar"
-        onPress={() => navigation.replace("Juego")}
-      />
-      <Button title="🛑 Finalizar" onPress={() => finalizarPartida(false)} />
-      <Button
-        title="🔙 Volver al menú"
-        onPress={() => navigation.replace("Inicio")}
-      />
-    </ScrollView>
+        <TextInput
+          placeholder="Ingresá un número de 4 cifras"
+          value={intento}
+          onChangeText={setIntento}
+          keyboardType="numeric"
+          maxLength={4}
+          style={styles.input}
+        />
+
+        <View style={styles.boton}>
+          <Button
+            title="✅ Verificar"
+            onPress={manejarVerificacion}
+            color="#007BFF"
+          />
+        </View>
+
+        <View style={styles.boton}>
+          <Button title="🆘 Pedir ayuda" onPress={pedirAyuda} color="#FFA500" />
+        </View>
+
+        {resultado !== "" && (
+          <Text style={styles.resultado}>
+            📊 <Text style={styles.verde}>{resultado.split(" ")[0]}</Text>{" "}
+            <Text style={styles.naranja}>{resultado.split(" ")[1]}</Text>{" "}
+            <Text style={styles.rojo}>{resultado.split(" ")[2]}</Text>
+          </Text>
+        )}
+
+        <Text style={styles.subheader}>📜 Historial:</Text>
+        {historial.map((linea, i) => {
+          const partes = linea.split("→");
+          const texto = partes[0].trim();
+          const resultado = partes[1]?.trim().split(" ") || [];
+
+          return (
+            <Text key={i} style={styles.historial}>
+              {texto} → <Text style={styles.verde}>{resultado[0]}</Text>{" "}
+              <Text style={styles.naranja}>{resultado[1]}</Text>{" "}
+              <Text style={styles.rojo}>{resultado[2]}</Text>
+            </Text>
+          );
+        })}
+
+        <View style={styles.boton}>
+          <Button
+            title="🔁 Reiniciar"
+            onPress={reiniciarPartida}
+            disabled={reinicioUsado}
+          />
+        </View>
+        <View style={styles.boton}>
+          <Button
+            title="🛑 Finalizar"
+            onPress={() => finalizarPartida(false)}
+            color="#dc3545"
+          />
+        </View>
+        <View style={styles.boton}>
+          <Button
+            title="🔙 Volver al menú"
+            onPress={() => navigation.replace("Inicio")}
+            color="#28a745"
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 export default JuegoScreen;
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
-  header: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
-  intento: { marginBottom: 10 },
+  container: { padding: 24, paddingBottom: 40 },
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  intento: { marginBottom: 10, fontSize: 16, textAlign: "center" },
   input: {
     borderWidth: 1,
-    padding: 10,
+    borderColor: "#aaa",
+    borderRadius: 5,
+    padding: 12,
     fontSize: 18,
     marginBottom: 10,
-    borderRadius: 5,
-    borderColor: "#aaa",
+    backgroundColor: "#fff",
   },
-  resultado: { marginTop: 10, marginBottom: 20, fontSize: 16 },
-  subheader: { fontWeight: "bold", marginTop: 20 },
-  historial: { marginVertical: 2 },
+  resultado: {
+    fontSize: 18,
+    marginVertical: 12,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  subheader: {
+    fontWeight: "bold",
+    marginTop: 20,
+    marginBottom: 8,
+    fontSize: 16,
+  },
+  historial: {
+    fontFamily: "monospace",
+    marginVertical: 4,
+    backgroundColor: "#e6e6e6",
+    padding: 10,
+    borderRadius: 5,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  boton: {
+    marginVertical: 8,
+  },
+  verde: {
+    color: "green",
+    fontWeight: "bold",
+  },
+  naranja: {
+    color: "orange",
+    fontWeight: "bold",
+  },
+  rojo: {
+    color: "red",
+    fontWeight: "bold",
+  },
 });
